@@ -396,14 +396,14 @@
     },
     {
       "id": 106,
-      "type": "KSampler",
+      "type": "PiDKSamplerCapture",
       "pos": [
         658.162184123916,
         -365.18438698924126
       ],
       "size": [
-        348.65625,
-        445.40625
+        360,
+        500
       ],
       "flags": {},
       "order": 9,
@@ -432,35 +432,42 @@
       ],
       "outputs": [
         {
-          "name": "LATENT",
+          "name": "final_latent",
           "type": "LATENT",
           "slot_index": 0,
           "links": [
-            217,
+            217
+          ]
+        },
+        {
+          "name": "pid_latent",
+          "type": "LATENT",
+          "slot_index": 1,
+          "links": [
             253
           ]
+        },
+        {
+          "name": "pid_sigma",
+          "type": "FLOAT",
+          "slot_index": 2,
+          "links": null
         }
       ],
       "properties": {
-        "cnr_id": "comfy-core",
-        "ver": "0.3.64",
-        "Node name for S&R": "KSampler",
-        "enableTabs": false,
-        "tabWidth": 65,
-        "tabXOffset": 10,
-        "hasSecondTab": false,
-        "secondTabText": "Send Back",
-        "secondTabOffset": 80,
-        "secondTabWidth": 65
+        "cnr_id": "comfyui-pid",
+        "ver": "0.2.3",
+        "Node name for S&R": "PiDKSamplerCapture"
       },
       "widgets_values": [
         313338071020806,
         "randomize",
-        40,
+        50,
         4,
         "euler",
         "beta",
-        1
+        1,
+        46
       ]
     },
     {
@@ -496,7 +503,7 @@
       ],
       "properties": {
         "cnr_id": "comfyui-pid",
-        "ver": "0.2.2",
+        "ver": "0.2.3",
         "Node name for S&R": "PiDTextPrompt",
         "aux_id": "Merserk/ComfyUI-PiD"
       },
@@ -522,7 +529,7 @@
       "outputs": [],
       "properties": {},
       "widgets_values": [
-        "PiD Decode - Simple Cheat Sheet\n\nBest 2K quality mode\nBase generation: 512 x 512\nPiD checkpoint: 2k\nScale: 4\nFinal output: 2048 x 2048\n\nBest 4K quality mode\nBase generation: 1024 x 1024\nPiD checkpoint: 2kto4k\nScale: 4\nFinal output: 4096 x 4096\n\nLowest-VRAM staged connection\nKSampler LATENT -> PiD Prepare latent\nPrompt caption -> PiD Prepare caption\nLeave PiD Prepare vae and baseline_image disconnected.\nPiD Prepare -> PiD Sample -> PiD Finalize\n\nPiD Sample runs the heavy PiD pass in a subprocess, so its CUDA context is destroyed after sampling.\n\nThe node infers the 1024px baseline size from the latent grid for official latent-conditioned PiD checkpoints. Connect baseline_image only if you need a specific external baseline size.\n\nIf 1024 -> 4096 still runs out of VRAM on 16GB, try sequential_blocks, then use 960 -> 3840 or 896 -> 3584."
+        "PiD Decode - Simple Cheat Sheet\n\nBest 4K quality mode\nBase generation: 1024 x 1024\nPiD checkpoint: 2kto4k\nPiD scale: 4\nFinal output: 4096 x 4096\n\nQuality-oriented staged connection\nPiD KSampler Capture pid_latent -> PiD Prepare latent\nPiD Text Prompt caption -> PiD Prepare caption\nLeave PiD Prepare vae and baseline_image disconnected.\nPiD Prepare -> PiD Sample -> PiD Finalize\n\nPiD KSampler Capture recommended settings for Z-Image:\nsteps = 50\nsampler_name = euler\nscheduler = beta\ncapture_step = 46\n\nPiD Prepare can keep sigma at 0.0 because pid_latent carries pid_sigma automatically.\nIf 1024 -> 4096 still runs out of VRAM on 16GB, try sequential_blocks, then use 960 -> 3840 or 896 -> 3584."
       ],
       "color": "#432",
       "bgcolor": "#653"
@@ -656,7 +663,7 @@
       ],
       "properties": {
         "cnr_id": "comfyui-pid",
-        "ver": "0.2.2",
+        "ver": "0.2.3",
         "Node name for S&R": "PiDPrepare"
       },
       "widgets_values": [
@@ -701,7 +708,7 @@
       ],
       "properties": {
         "cnr_id": "comfyui-pid",
-        "ver": "0.2.2",
+        "ver": "0.2.3",
         "Node name for S&R": "PiDFinalize"
       },
       "widgets_values": []
@@ -738,7 +745,7 @@
       ],
       "properties": {
         "cnr_id": "comfyui-pid",
-        "ver": "0.2.2",
+        "ver": "0.2.3",
         "Node name for S&R": "PiDSample"
       },
       "widgets_values": [
@@ -851,7 +858,7 @@
     [
       253,
       106,
-      0,
+      1,
       143,
       0,
       "LATENT"

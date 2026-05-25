@@ -22,6 +22,7 @@ try:
         _ensure_checkpoint,
         _ensure_backbone_assets,
         _latent_samples,
+        _latent_pid_sigma,
         _baseline_cpu_and_size,
         _free_cuda_memory,
         _bchw_neg1_to_comfy_image,
@@ -38,6 +39,7 @@ except ImportError:  # pragma: no cover
         _ensure_checkpoint,
         _ensure_backbone_assets,
         _latent_samples,
+        _latent_pid_sigma,
         _baseline_cpu_and_size,
         _free_cuda_memory,
         _bchw_neg1_to_comfy_image,
@@ -126,6 +128,7 @@ class PiDPrepare:
         _ensure_backbone_assets(pid_dir, backbone, allow_download=bool(auto_download))
 
         samples = _latent_samples(latent)
+        sigma = _latent_pid_sigma(latent, sigma)
         if samples.shape[1] != backbone_info.latent_channels:
             raise PiDNodeError(
                 f"{backbone_info.label} PiD expects {backbone_info.latent_channels}-channel latents. "

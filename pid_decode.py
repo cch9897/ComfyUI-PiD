@@ -986,6 +986,15 @@ def _latent_samples(latent: dict) -> torch.Tensor:
     return samples
 
 
+def _latent_pid_sigma(latent: dict, fallback: float) -> float:
+    if isinstance(latent, dict) and "pid_sigma" in latent and abs(float(fallback)) < 1e-12:
+        try:
+            return float(latent["pid_sigma"])
+        except Exception:
+            pass
+    return float(fallback)
+
+
 def _comfy_image_to_bchw_01(image: torch.Tensor) -> torch.Tensor:
     # Comfy IMAGE is [B,H,W,C] float 0..1.
     if image.ndim != 4 or image.shape[-1] not in (1, 3, 4):
@@ -1131,6 +1140,7 @@ class PiDDecode:
         _ensure_backbone_assets(pid_dir, backbone, allow_download=bool(auto_download))
 
         samples = _latent_samples(latent)
+        sigma = _latent_pid_sigma(latent, sigma)
         if samples.shape[1] != backbone_info.latent_channels:
             raise PiDNodeError(
                 f"{backbone_info.label} PiD expects {backbone_info.latent_channels}-channel latents. "

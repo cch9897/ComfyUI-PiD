@@ -15,6 +15,7 @@ The node can create the baseline through a connected ComfyUI `VAE`, or you can c
 - **PiD Decode**: decodes a PiD-supported latent and outputs `IMAGE`.
 - **PiD Text Prompt**: one prompt box with outputs for both CLIP text encoding and PiD caption conditioning.
 - **PiD Prepare / PiD Sample / PiD Finalize**: staged low-VRAM flow. **PiD Sample** runs in a subprocess so CUDA memory is released when sampling finishes.
+- **PiD KSampler Capture**: KSampler-compatible node that outputs the final latent plus a captured intermediate latent and matching sigma for PiD.
 
 There are no separate setup/download/unload nodes. PiD source, checkpoints, and required asset files are prepared lazily when **PiD Decode** runs with `auto_download=true`.
 
@@ -206,7 +207,7 @@ PiD Decode (Staged)
 Recommended staged wiring for lower VRAM:
 
 ```text
-KSampler LATENT -> PiD Prepare latent
+PiD KSampler Capture pid_latent -> PiD Prepare latent
 PiD Text Prompt -> PiD Prepare caption
 
 PiD Prepare -> PiD Sample
@@ -214,9 +215,20 @@ PiD Sample -> PiD Finalize
 PiD Finalize -> Save Image
 ```
 
+Recommended **PiD KSampler Capture** settings for Z-Image:
+
+```text
+steps = 50
+sampler_name = euler
+scheduler = beta
+capture_step = 46
+```
+
+When **PiD Prepare** receives `pid_latent` from **PiD KSampler Capture**, leave `sigma=0.0`. The captured latent carries `pid_sigma`, and **PiD Prepare** uses it automatically. You can also connect the explicit `pid_sigma` output to the **PiD Prepare** sigma input if you prefer visible wiring.
+
 What each stage does:
 
-- **PiD Prepare**: resolves/checks PiD assets, decodes the baseline image only if connected/needed, and stores the latent plus optional baseline on CPU. If no baseline is connected, it infers the base image size from the latent. It can also run cleanup immediately after preparation.
+- **PiD Prepare**: resolves/checks PiD assets, decodes the baseline image only if connected/needed, and stores the latent plus optional baseline on CPU. If no baseline is connected, it infers the base image size from the latent. If the latent came from **PiD KSampler Capture**, it also uses the captured sigma automatically while the sigma widget is left at `0.0`. It can also run cleanup immediately after preparation.
 - **PiD Sample**: saves the prepared CPU tensors to a temporary file, launches a separate Python process, runs PiD there with text/VAE offload and lazy LQ features, writes the output tensor back to CPU, then exits. When the subprocess exits, its CUDA context is destroyed.
 - **PiD Finalize**: converts the CPU PiD tensor into a normal ComfyUI IMAGE output.
 - **PiD Decode (Staged)**: convenience wrapper that runs the three stages internally.
