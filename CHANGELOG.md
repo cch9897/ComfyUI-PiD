@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.0
+
+- Added real staged PiD nodes: **PiD Prepare**, **PiD Sample**, **PiD Finalize**, and **PiD Decode (Staged)**.
+- The staged flow keeps the baseline image and latent on CPU between stages, so ComfyUI can unload models and free VRAM between the preparation and PiD sampling phases.
+- Added the `cleanup_after_prepare` option to aggressively free Comfy/Z-Image memory before the PiD sample stage.
+- Added sequential offload support to the new PiD Sample stage.
+
 ## Sequential block offload build
 
 - Based on the pre-FP8 GitHub-ready build. No FP8/float8 precision modes are included.

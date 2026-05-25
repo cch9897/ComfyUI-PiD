@@ -193,6 +193,39 @@ If ComfyUI reports that no block stack could be detected, set `sequential_offloa
 4. PiD currently expects CUDA and significant VRAM, especially with `2kto4k` and high output scales.
 5. NVIDIA's PiD weights have their own license/terms. Check the Hugging Face model card before using them.
 
+
+## Staged PiD workflow (real stage-based nodes)
+
+This build adds four staged nodes:
+
+```text
+PiD Prepare
+PiD Sample
+PiD Finalize
+PiD Decode (Staged)
+```
+
+Recommended staged wiring for lower VRAM:
+
+```text
+KSampler LATENT -> PiD Prepare latent
+KSampler LATENT -> VAEDecode -> PiD Prepare baseline_image
+PiD Text Prompt -> PiD Prepare caption
+
+PiD Prepare -> PiD Sample
+PiD Sample -> PiD Finalize
+PiD Finalize -> Save Image
+```
+
+What each stage does:
+
+- **PiD Prepare**: resolves/checks PiD assets, decodes the baseline image if needed, and stores the latent + baseline on CPU. It can also run cleanup immediately after preparation.
+- **PiD Sample**: loads the PiD model, optionally enables sequential block offload, runs PiD, then unloads the PiD model again.
+- **PiD Finalize**: converts the CPU PiD tensor into a normal ComfyUI IMAGE output.
+- **PiD Decode (Staged)**: convenience wrapper that runs the three stages internally.
+
+This does **not** provide a true subprocess-level VRAM reset, but it is a cleaner and more controllable stage-based design than a single giant decode step.
+
 ## Troubleshooting
 
 ### Widget values shift after switching browser tabs
