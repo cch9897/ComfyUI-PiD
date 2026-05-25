@@ -26,3 +26,4 @@ PublisherId = "merserk"
 DisplayName = "ComfyUI-PiD"
 Icon = ""
 includes = ["example_workflows"]
+
