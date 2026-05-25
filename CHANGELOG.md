@@ -1,10 +1,10 @@
 # Changelog
 
-## Precision update
+## Precision safety update
 
-- Added a `precision` setting to **PiD Decode** with `bf16`, `fp16`, `fp8_e4m3fn`, and `fp8_e5m2`.
-- `bf16` remains the default. `fp16` is intended as a lower-precision / lower-VRAM option.
-- Added clear error handling for unsupported or failed FP8 casting.
+- Kept the `precision` setting but limited it to `bf16` and `fp16`.
+- Removed the FP8 options because PiD cannot run through normal PyTorch modules with a simple float8 cast.
+- `bf16` remains the default. `fp16` is the only experimental lower-VRAM option in this build.
 
 ## GitHub/Registry ready build
 

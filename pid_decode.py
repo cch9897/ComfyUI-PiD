@@ -164,7 +164,7 @@ PID_BACKBONES: Dict[str, PiDBackbone] = {
 }
 
 BACKBONE_CHOICES = list(PID_BACKBONES.keys())
-PRECISION_CHOICES = ["bf16", "fp16", "fp8_e4m3fn", "fp8_e5m2"]
+PRECISION_CHOICES = ["bf16", "fp16"]
 
 _MODEL_CACHE: Dict[Tuple[str, str, str, str, str, bool, str], object] = {}
 
@@ -573,36 +573,15 @@ def _model_dtype_for_precision(precision: str):
         return torch.bfloat16
     if precision == "fp16":
         return torch.float16
-    if precision == "fp8_e4m3fn":
-        dtype = getattr(torch, "float8_e4m3fn", None)
-        if dtype is None:
-            raise PiDNodeError(
-                "This PyTorch build does not expose torch.float8_e4m3fn. "
-                "Use precision=bf16 or fp16 instead."
-            )
-        return dtype
-    if precision == "fp8_e5m2":
-        dtype = getattr(torch, "float8_e5m2", None)
-        if dtype is None:
-            raise PiDNodeError(
-                "This PyTorch build does not expose torch.float8_e5m2. "
-                "Use precision=bf16 or fp16 instead."
-            )
-        return dtype
     raise PiDNodeError(
         f"Unknown precision={precision!r}; expected one of {PRECISION_CHOICES}"
     )
 
 
 def _activation_dtype_for_precision(precision: str):
-    precision = str(precision or "bf16").strip().lower()
-    if precision == "bf16":
-        return torch.bfloat16
-    if precision in ("fp16", "fp8_e4m3fn", "fp8_e5m2"):
-        return torch.float16
-    raise PiDNodeError(
-        f"Unknown precision={precision!r}; expected one of {PRECISION_CHOICES}"
-    )
+    # Use the same compute dtype as the model. Native PyTorch float8 cannot be
+    # used as a drop-in compute dtype for PiD, so the node only exposes bf16/fp16.
+    return _model_dtype_for_precision(precision)
 
 
 def _apply_model_precision(model, precision: str):
@@ -611,13 +590,6 @@ def _apply_model_precision(model, precision: str):
     try:
         model = model.to(dtype=target_dtype)
     except Exception as exc:
-        if precision.startswith("fp8"):
-            raise PiDNodeError(
-                "PiD FP8 casting failed. FP8 is experimental and depends on the GPU, "
-                "PyTorch build, and whether the underlying PiD ops support float8. "
-                "Try precision=fp16 or precision=bf16 instead.\n\n"
-                f"Original error: {exc}"
-            ) from exc
         raise PiDNodeError(
             f"Could not cast PiD model to precision={precision!r}. Original error: {exc}"
         ) from exc

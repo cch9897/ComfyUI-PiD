@@ -165,16 +165,14 @@ The old direct `VAE -> PiD Decode vae` path still works, but pre-decoding the ba
 
 ### Precision setting
 
-`PiD Decode` now exposes a `precision` combo:
+`PiD Decode` exposes a `precision` combo:
 
 ```text
-bf16          recommended default
-fp16          lower precision / potentially lower VRAM
-fp8_e4m3fn    experimental
-fp8_e5m2      experimental
+bf16    recommended default / safest
+fp16    lower precision / may reduce VRAM
 ```
 
-`bf16` is the safest default. `fp16` can sometimes reduce VRAM, depending on the GPU and PyTorch build. The FP8 modes are experimental: they may fail at runtime or produce lower quality depending on whether the installed PyTorch build and underlying PiD ops support float8.
+Native PyTorch FP8 is not exposed here because PiD uses normal PyTorch modules that do not support float8 as a drop-in compute dtype. FP8 needs special weight-only kernels, not a simple `model.to(float8)` cast.
 
 ## Notes
 
