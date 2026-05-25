@@ -1,46 +1,31 @@
 # ComfyUI-PiD
 
-Experimental ComfyUI custom node for using NVIDIA **PiD** as a pixel diffusion decoder.
+Experimental **ComfyUI custom nodes** for using NVIDIA **PiD** as a pixel diffusion decoder.
 
 <img width="1058" height="604" alt="image" src="https://github.com/user-attachments/assets/cc5a9da3-94c6-4546-9574-c8387d5dffdb" />
 
 <img width="4096" height="2048" alt="1111111111111111" src="https://github.com/user-attachments/assets/7ccd55ee-e571-4996-9c9c-4b5cecbb4418" />
 
-PiD is not a normal `.safetensors` VAE. NVIDIA's official path gives PiD a latent, the native decoder/VAE baseline image, a sigma value, and the prompt:
+PiD is not a normal ComfyUI `VAE`. It needs a latent, a prompt/caption, a sigma value, and optionally a native decoder baseline image:
 
 ```text
-LATENT + baseline IMAGE + prompt + sigma -> PiD -> IMAGE
+LATENT + caption + sigma + optional baseline IMAGE -> PiD -> IMAGE
 ```
 
-The node can create the baseline through a connected ComfyUI `VAE`, or you can connect a pre-decoded `baseline_image` from another workflow component. For the current official latent-conditioned PiD checkpoints, the node can also infer the baseline size directly from the latent and skip the baseline image to reduce VRAM pressure.
+For the official latent-conditioned PiD checkpoints, this node can infer the baseline size from the latent and skip the extra VAE/baseline image path to reduce VRAM use.
 
-## Node
+## Features
 
-- **PiD Decode**: decodes a PiD-supported latent and outputs `IMAGE`.
-- **PiD Text Prompt**: one prompt box with outputs for both CLIP text encoding and PiD caption conditioning.
-- **PiD Prepare / PiD Sample / PiD Finalize**: staged low-VRAM flow. **PiD Sample** runs in a subprocess so CUDA memory is released when sampling finishes.
-- **PiD KSampler Capture**: KSampler-compatible node that outputs the final latent plus a captured intermediate latent and matching sigma for PiD.
+- Direct **PiD Decode** node that returns a ComfyUI `IMAGE`.
+- Staged low-VRAM workflow: **PiD Prepare → PiD Sample → PiD Finalize**.
+- **PiD Sample** runs in a subprocess so CUDA memory is released after sampling.
+- **PiD KSampler Capture** for grabbing an intermediate latent and matching sigma.
+- Lazy setup: PiD source, checkpoints, and required assets are prepared on first run when `auto_download=true`.
+- Optional sequential block offload for lower VRAM at the cost of speed.
 
-There are no separate setup/download/unload nodes. PiD source, checkpoints, and required asset files are prepared lazily when **PiD Decode** runs with `auto_download=true`.
+## Install
 
-## Supported Backbones
-
-The backbone list follows NVIDIA's official PiD checkpoint registry:
-
-| Node value | Official backbone | Latent channels | Checkpoints |
-| --- | --- | ---: | --- |
-| `zimage` | Z-Image, reuses Flux weights | 16 | `2k`, `2kto4k` |
-| `flux` | Flux | 16 | `2k`, `2kto4k` |
-| `flux2` | Flux2 | 128 | `2k`, `2kto4k` |
-| `sd3` | Stable Diffusion 3 | 16 | `2k`, `2kto4k` |
-| `dinov2` | DINOv2 RAE | 768 | `2k` |
-| `siglip` | SigLIP Scale-RAE | 1152 | `2k` |
-
-`scale=0` means "use NVIDIA's default scale for that checkpoint": 4x for Flux, Flux2, SD3, Z-Image, and DINOv2; 8x for SigLIP Scale-RAE.
-
-## Install From GitHub
-
-Clone this custom node into ComfyUI:
+Clone into `ComfyUI/custom_nodes`:
 
 ```bash
 cd ComfyUI/custom_nodes
@@ -51,38 +36,51 @@ python -m pip install -r requirements.txt
 
 Restart ComfyUI.
 
-Do not download PiD model weights during install. The node downloads only what it needs the first time you run it.
+Requirements:
+- Python `>=3.10`
+- NVIDIA CUDA GPU
+- Working ComfyUI install
+- Enough VRAM for PiD, especially for `2kto4k` or large output scales
 
-## Workflow Template
+`requirements.txt` does not install PyTorch because ComfyUI usually provides it.
 
-This repository includes a ComfyUI template workflow at:
+## Nodes
+
+| Node | Purpose |
+| --- | --- |
+| **PiD Decode** | One-node PiD decode from latent to image. |
+| **PiD Text Prompt** | One prompt box with `text` for CLIP and `caption` for PiD. |
+| **PiD KSampler Capture** | KSampler-compatible sampler that returns final latent, captured PiD latent, and sigma. |
+| **PiD Prepare** | Prepares latent, caption, checkpoint, assets, and metadata on CPU. |
+| **PiD Sample** | Runs the heavy PiD sampling step in a subprocess. |
+| **PiD Finalize** | Converts sampled PiD output back to ComfyUI `IMAGE`. |
+| **PiD Decode (Staged)** | Convenience wrapper around the staged path. |
+
+## Supported backbones
+
+| Value | Backbone | Latent channels | Checkpoints |
+| --- | --- | ---: | --- |
+| `zimage` | Z-Image / Flux-compatible | 16 | `2k`, `2kto4k` |
+| `flux` | Flux | 16 | `2k`, `2kto4k` |
+| `flux2` | Flux2 | 128 | `2k`, `2kto4k` |
+| `sd3` | Stable Diffusion 3 | 16 | `2k`, `2kto4k` |
+| `dinov2` | DINOv2 RAE | 768 | `2k` |
+| `siglip` | SigLIP Scale-RAE | 1152 | `2k` |
+
+`scale=0` uses NVIDIA's default scale for the selected checkpoint: usually `4x`, or `8x` for SigLIP Scale-RAE.
+
+## Basic workflow
+
+For Z-Image / Flux-style workflows:
 
 ```text
-example_workflows/image_z_image_pid.json
-```
-
-After installing or cloning the node, restart ComfyUI and open **Workflow → Browse Workflow Templates**. The workflow should appear under the custom-node template category for this node. The template uses the lower-VRAM path:
-
-```text
-KSampler LATENT -> PiD Decode latent
-PiD Decode vae and baseline_image disconnected
-```
-
-## Basic Workflow
-
-For Z-Image/Flux-style workflows:
-
-```text
-PiD Text Prompt text -> CLIP Text Encode
+PiD Text Prompt text    -> CLIP Text Encode
 PiD Text Prompt caption -> PiD Decode caption
-
-KSampler LATENT -> PiD Decode latent
-PiD Decode image -> Save Image
+KSampler latent         -> PiD Decode latent
+PiD Decode image        -> Save Image
 ```
 
-For the lowest VRAM peak on the official Z-Image/Flux/SD3-style checkpoints, leave both optional `vae` and `baseline_image` disconnected. The node infers the base image size from the latent grid and avoids the extra VAE decode/baseline tensor. If you need an exact externally decoded baseline size, connect a pre-decoded `baseline_image` and leave the optional `vae` input disconnected.
-
-Recommended first test settings on **PiD Decode**:
+Recommended first test settings:
 
 ```text
 backbone = zimage
@@ -97,77 +95,21 @@ aggressive_cleanup = true
 sequential_offload = disabled
 ```
 
-For nonstandard or future image-conditioned PiD checkpoints where the matching VAE is not available as a ComfyUI `VAE`, connect a pre-decoded `baseline_image` instead.
+For official latent-conditioned checkpoints, leave `vae` and `baseline_image` disconnected unless you specifically need an external baseline size.
 
-### VRAM offload behavior
+## Lowest-VRAM staged workflow
 
-This version is optimized so **PiD Decode** keeps only CPU copies of the input latent and optional baseline image before the PiD stage. It then asks ComfyUI to unload the previously loaded Z-Image/CLIP/VAE models and clears CUDA cache before loading PiD. During PiD sampling it offloads NVIDIA's Gemma text encoder and unused PiD VAE encoder after caption encoding, and it lazily computes PiD LQ conditioning features per block instead of storing every block's feature tensor at once. After the PiD image is converted back to a ComfyUI `IMAGE`, the PiD model is also removed from this node's private cache and moved off CUDA.
-
-For the lowest VRAM peak, prefer this workflow shape:
-
-```text
-KSampler LATENT -> PiD Decode latent
-PiD Text Prompt caption -> PiD Decode caption
-
-Leave PiD Decode vae and baseline_image disconnected unless you explicitly need a pre-decoded baseline.
-```
-
-The old direct `VAE -> PiD Decode vae` path still works, but it is no longer the lowest-VRAM path for the official latent-conditioned checkpoints.
-
-### Sequential block offload
-
-`PiD Decode` includes an optional `sequential_offload` setting:
-
-```text
-disabled                       fastest; previous behavior
-sequential_blocks              lower VRAM; slower
-sequential_blocks_aggressive   lowest VRAM attempt; slowest
-```
-
-This is a best-effort memory mode for the PiD/DiT stage. It detects the largest transformer/DiT block stack, moves those blocks to CPU before sampling, then moves each block to CUDA only for its own forward pass. This can reduce peak VRAM, but it will be much slower.
-
-Recommended order when testing a borderline 4K run:
-
-```text
-1. disabled
-2. sequential_blocks
-3. sequential_blocks_aggressive
-```
-
-If ComfyUI reports that no block stack could be detected, set `sequential_offload=disabled`.
-
-## Notes
-
-1. This is a practical ComfyUI wrapper around NVIDIA's public PiD code, not an official NVIDIA or ComfyUI node.
-2. This node outputs `IMAGE`, not a ComfyUI `VAE`, because PiD is a conditional pixel diffusion decoder.
-3. NVIDIA's best generated-image demos use captured intermediate latents, for example Z-Image around step 46 of 50. A final ComfyUI latent with `sigma=0.0` can work, but it is not identical to the official capture recipe.
-4. PiD currently expects CUDA and significant VRAM, especially with `2kto4k` and high output scales.
-5. NVIDIA's PiD weights have their own license/terms. Check the Hugging Face model card before using them.
-
-
-## Staged PiD workflow (real stage-based nodes)
-
-This build adds four staged nodes:
-
-```text
-PiD Prepare
-PiD Sample
-PiD Finalize
-PiD Decode (Staged)
-```
-
-Recommended staged wiring for lower VRAM:
+Use the staged nodes when VRAM is tight:
 
 ```text
 PiD KSampler Capture pid_latent -> PiD Prepare latent
-PiD Text Prompt -> PiD Prepare caption
-
-PiD Prepare -> PiD Sample
-PiD Sample -> PiD Finalize
-PiD Finalize -> Save Image
+PiD Text Prompt caption         -> PiD Prepare caption
+PiD Prepare                     -> PiD Sample
+PiD Sample                      -> PiD Finalize
+PiD Finalize image              -> Save Image
 ```
 
-Recommended **PiD KSampler Capture** settings for Z-Image:
+Recommended Z-Image capture settings:
 
 ```text
 steps = 50
@@ -176,76 +118,54 @@ scheduler = beta
 capture_step = 46
 ```
 
-When **PiD Prepare** receives `pid_latent` from **PiD KSampler Capture**, leave `sigma=0.0`. The captured latent carries `pid_sigma`, and **PiD Prepare** uses it automatically. You can also connect the explicit `pid_sigma` output to the **PiD Prepare** sigma input if you prefer visible wiring.
+`PiD Sample` runs in a separate Python process, so its CUDA context is destroyed after the sample is finished.
 
-What each stage does:
-
-- **PiD Prepare**: resolves/checks PiD assets, decodes the baseline image only if connected/needed, and stores the latent plus optional baseline on CPU. If no baseline is connected, it infers the base image size from the latent. If the latent came from **PiD KSampler Capture**, it also uses the captured sigma automatically while the sigma widget is left at `0.0`. It can also run cleanup immediately after preparation.
-- **PiD Sample**: saves the prepared CPU tensors to a temporary file, launches a separate Python process, runs PiD there with text/VAE offload and lazy LQ features, writes the output tensor back to CPU, then exits. When the subprocess exits, its CUDA context is destroyed.
-- **PiD Finalize**: converts the CPU PiD tensor into a normal ComfyUI IMAGE output.
-- **PiD Decode (Staged)**: convenience wrapper that runs the three stages internally.
-
-This keeps the main ComfyUI process out of the heavy PiD sampling stage, which is stronger than normal `empty_cache()` cleanup.
-
-Recommended first test:
+## Output size guide
 
 ```text
-PiD Sample:
-sequential_offload = disabled
-aggressive_cleanup = true
+512x512 base  + 2k     + scale 4 -> 2048x2048
+1024x1024 base + 2kto4k + scale 4 -> 4096x4096
 ```
 
-If it still exceeds dedicated VRAM, try:
+Large outputs can require a lot of VRAM. If a run fails, try:
+1. Lower `scale`.
+2. Use a smaller base latent.
+3. Keep cleanup options enabled.
+4. Try `sequential_blocks`, then `sequential_blocks_aggressive`.
+5. Restart ComfyUI after CUDA allocator crashes.
+
+## PiD source and weights
+
+By default, the node uses:
 
 ```text
-sequential_offload = sequential_blocks
+ComfyUI/custom_nodes/ComfyUI-PiD/vendor/PiD
 ```
 
-This can be much slower. If 1024 -> 4096 still fails after using **PiD Sample** with no connected baseline/VAE, the PiD block activations themselves are too large for the available dedicated VRAM and you should use 960 -> 3840, 896 -> 3584, or 512 -> 2048.
+You can override the PiD source location with:
+- the `pid_source_dir` node input
+- `PID_REPO_DIR`
+- `COMFYUI_PID_REPO_DIR`
 
+When `auto_download=true`, the node downloads missing PiD source/checkpoints/assets as needed.
 
-## Troubleshooting
+## Example workflow
 
-### Widget values shift after switching browser tabs
+A template workflow is included in:
 
-This build uses ComfyUI's canonical combo syntax for `backbone` and `pid_ckpt_type`. If a workflow was already saved while the node was broken, delete and re-add the **PiD Decode** node once, or manually set the values again after installing this build.
-
-
-
-### Template does not appear in ComfyUI
-
-Make sure the workflow file is in `example_workflows/`, restart ComfyUI, and hard-refresh the browser.
-
-### Missing dependencies
-
-Install the custom node requirements and restart ComfyUI:
-
-```bash
-python -m pip install -r requirements.txt
+```text
+example_workflows/image_z_image_pid.json
 ```
 
-### Missing checkpoint or asset
+After restart, open it from ComfyUI workflow templates or load the JSON manually.
 
-Set `auto_download=true` on **PiD Decode**. The node downloads the selected checkpoint and the required VAE/tokenizer assets on first run.
+## Notes
 
-### Output looks wrong
+- This is a community wrapper around NVIDIA's public PiD code, not an official NVIDIA or ComfyUI project.
+- PiD outputs `IMAGE`, not a ComfyUI `VAE`.
+- NVIDIA's PiD weights may have separate license/usage terms. Check the model card before commercial use.
+- Final latents with `sigma=0.0` can work, but captured intermediate latents usually better match the official PiD recipe.
 
-Check that:
+## License
 
-- `backbone` matches the latent you are feeding into PiD.
-- The latent channel count matches the selected backbone.
-- If you connect a `VAE` or `baseline_image`, it matches that latent. For the official latent-conditioned checkpoints, both can stay disconnected.
-- Start with `sigma=0.0`, `cfg_scale=1.0`, `pid_steps=4`, and `scale=1` or `2`.
-
-### VRAM or cudaMallocAsync errors
-
-This build unloads ComfyUI models before PiD and unloads PiD again after the decode. If VRAM is still high, check the workflow first: leave both optional `vae` and `baseline_image` disconnected, and use the staged **PiD Sample** node. If the 4K path is still just over the limit, try `sequential_offload=sequential_blocks`, then `sequential_blocks_aggressive`.
-
-For 16GB GPUs, start with one of these:
-
-- 1024x1024 base latent + `pid_ckpt_type=2k` + `scale=1` or `scale=2`
-- 512x512 base latent + `pid_ckpt_type=2k` + `scale=4`
-
-Avoid 1024x1024 base latent + `pid_ckpt_type=2kto4k` + `scale=4` on 16GB cards. That asks PiD to generate roughly 4096x4096 inside ComfyUI and commonly triggers CUDA allocator/VRAM failures.
-
-If a CUDA allocator internal assert occurs, restart ComfyUI before trying again. The CUDA process can remain unstable after that error.
+This project is released under the MIT License.
