@@ -2,6 +2,8 @@
 
 Experimental ComfyUI custom node for using NVIDIA **PiD** as a pixel diffusion decoder.
 
+<img width="4096" height="2048" alt="1111111111111111" src="https://github.com/user-attachments/assets/7ccd55ee-e571-4996-9c9c-4b5cecbb4418" />
+
 PiD is not a normal `.safetensors` VAE. NVIDIA's official path gives PiD a latent, the native decoder/VAE baseline image, a sigma value, and the prompt:
 
 ```text
