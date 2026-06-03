@@ -1266,7 +1266,10 @@ def _enable_cpu_cached_pixel_positions(model: object, chunk_patches: int) -> Non
         projected = projected.view(b, hs, patch_size, ws, patch_size, self.hidden_size_output)
         projected = projected.permute(0, 1, 3, 2, 4, 5).contiguous()
         projected = projected.view(b * patch_count, p2, self.hidden_size_output)
-        output = None
+        # `projected` is a freshly materialized contiguous tensor that nothing
+        # else aliases, so fold the CPU-resident positions into it in place.
+        # The chunk loop exists only to stream `pos` onto the GPU a slice at a
+        # time; keeping a second full-size output buffer would defeat that.
         for batch_index in range(b):
             batch_offset = batch_index * patch_count
             for patch_start in range(0, patch_count, chunk_patches):
@@ -1274,12 +1277,9 @@ def _enable_cpu_cached_pixel_positions(model: object, chunk_patches: int) -> Non
                 flat_start = batch_offset + patch_start
                 flat_end = batch_offset + patch_end
                 pos = pos_patches[patch_start:patch_end].to(device=projected.device, dtype=inputs.dtype)
-                chunk = projected[flat_start:flat_end] + pos
-                if output is None:
-                    output = chunk.new_empty(projected.shape)
-                output[flat_start:flat_end] = chunk
+                projected[flat_start:flat_end] += pos
         _trim_cuda_cache()
-        return output
+        return projected
 
     embedder.forward = MethodType(chunked_forward, embedder)
     embedder._comfy_pid_cpu_position_chunks = chunk_patches
@@ -1359,15 +1359,18 @@ def _enable_chunked_pixel_blocks(model: object, chunk_patches: int) -> None:
             del compressed
             expanded = self.expand_from_attn(attention.reshape(bl, self.attn_dim)).view(bl, p2, self.pixel_dim)
             del attention
-            output = torch.empty_like(x)
+            # `expanded` is a fresh, unaliased full-size tensor. Each chunk's slice
+            # is dead once `residual` has consumed it, so write the block output
+            # back into `expanded` in place rather than holding a second
+            # empty_like(x) buffer for the whole image.
             for start in range(0, bl, _chunk_patches):
                 end = min(bl, start + _chunk_patches)
                 params = self.adaLN_modulation(s_cond[start:end]).view(end - start, p2, 6 * self.pixel_dim)
                 shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = torch.chunk(params, 6, dim=-1)
                 residual = x[start:end] + gate_msa * expanded[start:end]
                 mlp = self.mlp(_apply_adaln(self.norm2(residual), shift_mlp, scale_mlp))
-                output[start:end] = residual + gate_mlp * mlp
-            return output
+                expanded[start:end] = residual + gate_mlp * mlp
+            return expanded
 
         block.forward = MethodType(chunked_forward, block)
         block._comfy_pid_chunk_patches = chunk_patches
