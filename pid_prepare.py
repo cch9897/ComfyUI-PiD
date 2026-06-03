@@ -71,12 +71,13 @@ class PiDPrepare:
                 "pid_ckpt_type": (["2k", "2kto4k"], {"default": "2k"}),
                 "scale": ("INT", {"default": 0, "min": 0, "max": 8, "step": 1}),
                 "sigma": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1000.0, "step": 0.001}),
-                "auto_download": ("BOOLEAN", {"default": True}),
+                "auto_download": ("BOOLEAN", {"default": False}),
                 "cleanup_after_prepare": ("BOOLEAN", {"default": True}),
             },
             "optional": {
                 "vae": ("VAE",),
                 "pid_source_dir": ("STRING", {"default": "", "multiline": False}),
+                "pid_model_dir": ("STRING", {"default": "", "multiline": False}),
                 "baseline_image": ("IMAGE",),
             },
         }
@@ -98,6 +99,7 @@ class PiDPrepare:
         cleanup_after_prepare: bool = True,
         vae=None,
         pid_source_dir: str = "",
+        pid_model_dir: str = "",
         baseline_image=None,
     ):
         backbone = str(backbone).strip()
@@ -110,7 +112,7 @@ class PiDPrepare:
             scale = int(ckpt.scale or backbone_info.default_scale)
 
         pid_dir = _resolve_pid_dir(pid_source_dir)
-        model_dir = _resolve_pid_model_dir()
+        model_dir = _resolve_pid_model_dir(pid_model_dir)
         _ensure_pid_source(pid_dir, allow_download=bool(auto_download))
         _migrate_legacy_checkpoints(model_dir)
         checkpoint_path = _ensure_checkpoint(model_dir, backbone, pid_ckpt_type, allow_download=bool(auto_download))

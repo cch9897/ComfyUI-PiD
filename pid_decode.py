@@ -126,12 +126,23 @@ PID_CKPTS: Dict[Tuple[str, str], PiDCheckpoint] = {
         relpath="checkpoints/PiD_res2kto4k_sr4x_official_flux_distill_4step/model_ema_bf16.pth",
         scale=4,
     ),
+    ("qwenimage", "2kto4k"): PiDCheckpoint(
+        experiment="PiD_res2kto4k_sr4x_official_qwenimage_distill_4step",
+        relpath="checkpoints/PiD_res2kto4k_sr4x_official_qwenimage_distill_4step/model_ema_bf16.pth",
+        scale=4,
+    ),
 }
+
+# Qwen-Image-2512 (Dec 2025 refresh) shares the same AE and PiD student as
+# Qwen-Image — only the transformer/text-encoder differ.
+PID_CKPTS[("qwenimage-2512", "2kto4k")] = PID_CKPTS[("qwenimage", "2kto4k")]
 
 
 PID_BACKBONES: Dict[str, PiDBackbone] = {
     "zimage": PiDBackbone("Z-Image", "zimage", 16, 4, 8, ("2k", "2kto4k"), needs_flux_ae=True),
     "flux": PiDBackbone("Flux", "flux", 16, 4, 8, ("2k", "2kto4k"), needs_flux_ae=True),
+    "qwenimage": PiDBackbone("Qwen-Image", "qwenimage", 16, 4, 8, ("2kto4k",), needs_flux_ae=True),
+    "qwenimage-2512": PiDBackbone("Qwen-Image 2512", "qwenimage-2512", 16, 4, 8, ("2kto4k",), needs_flux_ae=True),
     "flux2": PiDBackbone(
         "Flux2",
         "flux2",
@@ -460,8 +471,20 @@ def _resolve_pid_dir(pid_source_dir: str = "") -> Path:
     return DEFAULT_PID_DIR.resolve()
 
 
-def _resolve_pid_model_dir() -> Path:
-    """Return the ComfyUI-managed root for NVIDIA PiD weights and assets."""
+def _resolve_pid_model_dir(pid_model_dir: str = "") -> Path:
+    """Return the ComfyUI-managed root for NVIDIA PiD weights and assets.
+
+    Priority: explicit pid_model_dir argument → PID_MODEL_DIR env var →
+    COMFYUI_PID_MODEL_DIR env var → ComfyUI/models/nvidia_pid.
+    """
+    if pid_model_dir and pid_model_dir.strip():
+        return Path(pid_model_dir.strip()).expanduser().resolve()
+    env_path = (
+        os.environ.get("PID_MODEL_DIR")
+        or os.environ.get("COMFYUI_PID_MODEL_DIR")
+    )
+    if env_path:
+        return Path(env_path).expanduser().resolve()
     if folder_paths is not None:
         models_dir = getattr(folder_paths, "models_dir", None)
         if models_dir:
@@ -860,7 +883,7 @@ def _pid_asset_experiment_opts(model_dir: Path, backbone: str) -> List[str]:
     def override(field: str, relpath: str) -> str:
         return f"++model.config.tokenizer.{field}={_hydra_path(model_dir / relpath)}"
 
-    if backbone in ("zimage", "flux"):
+    if backbone in ("zimage", "flux", "qwenimage", "qwenimage-2512"):
         return [override("vae_pth", AE_REL_PATH)]
     if backbone == "flux2":
         return [override("vae_pth", "checkpoints/flux2_ae.safetensors")]
@@ -1613,13 +1636,14 @@ class PiDDecode:
                 "cfg_scale": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 20.0, "step": 0.1}),
                 "sigma": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1000.0, "step": 0.001}),
                 "seed": ("INT", {"default": 0, "min": 0, "max": 2**31 - 1}),
-                "auto_download": ("BOOLEAN", {"default": True}),
+                "auto_download": ("BOOLEAN", {"default": False}),
                 "unload_comfy_before_pid": ("BOOLEAN", {"default": True}),
                 "aggressive_cleanup": ("BOOLEAN", {"default": True}),
             },
             "optional": {
                 "vae": ("VAE",),
                 "pid_source_dir": ("STRING", {"default": "", "multiline": False}),
+                "pid_model_dir": ("STRING", {"default": "", "multiline": False}),
                 "sequential_offload": (SEQUENTIAL_OFFLOAD_CHOICES, {"default": "auto_low_vram"}),
                 "pid_weight_precision": (PID_WEIGHT_PRECISION_CHOICES, {"default": "fp32_compatible"}),
                 "pixel_chunk_patches": ("INT", {"default": 0, "min": 0, "max": 65536, "step": 1024}),
@@ -1648,6 +1672,7 @@ class PiDDecode:
         aggressive_cleanup: bool = True,
         vae=None,
         pid_source_dir: str = "",
+        pid_model_dir: str = "",
         sequential_offload: str = "auto_low_vram",
         pid_weight_precision: str = "fp32_compatible",
         pixel_chunk_patches: int = 0,
@@ -1670,7 +1695,7 @@ class PiDDecode:
             scale = int(ckpt.scale or backbone_info.default_scale)
 
         pid_dir = _resolve_pid_dir(pid_source_dir)
-        model_dir = _resolve_pid_model_dir()
+        model_dir = _resolve_pid_model_dir(pid_model_dir)
         _ensure_pid_source(pid_dir, allow_download=bool(auto_download))
         _migrate_legacy_checkpoints(model_dir)
         checkpoint_path = _ensure_checkpoint(model_dir, backbone, pid_ckpt_type, allow_download=bool(auto_download))
